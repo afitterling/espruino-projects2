@@ -120,18 +120,6 @@ function isOnline(fn, fn2) {
   });
 }
 
-function isOnlinePromised() {
-  var p = new Promise(function(resolve, reject){
-    at.cmd("AT+CIFSR\r\n",1000, function(d){
-      if (d==="ERROR" || d!==IPAddress){
-        resolve();
-      } else {
-        reject();      }
-    });
-  });
-  return p;
-}
-
 
 /* this function 
    powers the SIM900 on/off by triggering the button "power"
@@ -413,15 +401,9 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
       });
 
       return;
-    }
 
-    // @TODO early delete of job on server
-    
-    // supervise flow sensor @TODO and emergency shutdown
-    // mark job as failed
-
-    // start from first iteration every two minute
-    if ((jobIterations +1) % 2 === 0){
+    } else if ((jobIterations +1) % 2 === 0){
+      // start from first iteration every two minute
       $http({
         host: 'api.carriots.com',
         path: '/status/',
@@ -440,6 +422,11 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
         }
       });
     }
+
+    // @TODO early delete of job on server
+
+    // supervise flow sensor @TODO and emergency shutdown
+    // mark job as failed
 
     return applyJobToHWAsChunks(cycle, lengthInMin, fn);
   }, 1 * SECONDSINMINUTES * 1000);
