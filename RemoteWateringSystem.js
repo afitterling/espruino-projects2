@@ -1,15 +1,16 @@
 //////////////////////////////////////////////////////////////////
 // Modules
-var at = require('http://localhost:3000/AT.js').connect(Serial2);
+var atmod = require('http://localhost:3000/AT.js');
+var at = atmod.connect(Serial2);
 var gprsmod = require('http://localhost:3000/SIM900.js');
 var Clock = require('http://localhost:3000/clock.js').Clock;
 var WaterCycle = require('http://localhost:3000/watering.js').Cycle;
 var FlowMeter = require('http://localhost:3000/flowmeter.js');
 var $http = require('http://localhost:3000/carriots.js').http;
 var clk = new Clock();
-var settings = require('http://localhost:3000/settings.js')
+var settings = require('http://localhost:3000/settings.js');
 
-$http.defaultHeaders['carriots.apiKey'] = settings.carriot.apiKey;
+$http.defaultHeaders['carriots.apiKey'] = settings.carriots.apiKey;
 
 WaterCycle(1,0);
 WaterCycle(2,0);
@@ -60,7 +61,7 @@ var SECONDSINMINUTES = 60;
 function uplink(callback, callback2){
   reconnectRunning = true;
   console.log("Connecting to SIM900 module " + clk.getDate().toString());
-  gprs = require('http://localhost:3000/SIM900.js').connect(Serial2, null /*reset*/, function(err) {
+  gprs = gprsmod.connect(Serial2, null /*reset*/, function(err) {
     if(!err) {
       // success
       gprs.connect(settings.carrier.host, settings.carrier.user, settings.carrier.password, function(err) {
@@ -164,7 +165,7 @@ function resetSIM(fn){
   }, 5000);
 }
 
-function requestsNew(){
+function mainLoopFunc(){
   return isOnline(function(){
   return $http({
       host: 'api.carriots.com',
@@ -235,9 +236,9 @@ function requestsNew(){
 function setupMainLoop(fn){
   if (mainLoopInterval) return;
   console.log('init of main loop called');
-  mainLoop = setInterval(requestsNew, MAIN_INTERVAL_LENGTH * 60 * 1000);
+  mainLoop = setInterval(mainLoopFunc, MAIN_INTERVAL_LENGTH * 60 * 1000);
   mainLoopInterval = true;
-  return requestsNew();
+  return mainLoopFunc();
 }
 
 function clearMainLoop(){
@@ -257,9 +258,12 @@ function reconnectLoopFunc(){
     setTimeout(function(){
       return uplink(function(){
         // success
-        setupMainLoop();
+        console.log('reconnectLoopFunc success');
+        return setupMainLoop();
       }, function(){
         // error
+        console.log('reconnectLoopFunc error handler');
+        return setupMainLoop();
       });
     }, 20000);
   });
@@ -268,7 +272,7 @@ function reconnectLoopFunc(){
 function setupReconnectLoop(){
   console.log('init of reconnect loop called');
 //  reconnectInterval = setInterval(reconnectLoopFunc, RESET_INTERVAL_LENGTH * 60 * 1000);
-  setTimeout(reconnectLoopFunc);
+  return setTimeout(reconnectLoopFunc);
 }
 
 /////////////////jobs
@@ -433,8 +437,6 @@ var lock;
 
 E.on('init', function(){
 
-//  console.log('initialization ..... ');
-
   // FlowMeter initialization
   FlowMeter.setup(A4);
   FlowMeter.run();
@@ -448,13 +450,12 @@ E.on('init', function(){
     }
   }, 10000);
 
-//  Serial2.setup(115200);
   Serial2.setup(9600);
-//  Serial2.on('data', function(data){ console.log(data);});
+  //Serial2.on('data', function(data){ console.log(data);});
 
   setupReconnectLoop();
 
-//  console.log('initialization done ' + clk.getDate().toString());
+  console.log('initialization done ' + clk.getDate().toString());
   digitalPulse(LED1,1, [50,260,50]);
 
 });
