@@ -370,6 +370,7 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
   return setTimeout(function(){
     /* if max length */
     jobIterations = jobIterations + 1;
+
     if (jobIterations >= lengthInMin) {
       WaterCycle(activeJob.cycle, 0);
       activeJob.status = 'finished';
@@ -395,7 +396,9 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
             method:'POST',
             data: {
               job: "done",
-              data: activeJob
+              data: activeJob,
+              iterations: jobIterations,
+              secondsPerIt: SECONDSINMINUTES
             }
         });
       }).then(function(){
@@ -410,6 +413,32 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
       });
 
       return;
+    }
+
+    // @TODO early delete of job on server
+    
+    // supervise flow sensor @TODO and emergency shutdown
+    // mark job as failed
+
+    // start from first iteration every two minute
+    if ((jobIterations +1) % 2 === 0){
+      $http({
+        host: 'api.carriots.com',
+        path: '/status/',
+        port: '80',
+        protocol: "v1",
+        checksum: "",
+        device: "defaultDevice@afitterling.afitterling",
+        at: "now",
+        method:'POST',
+        data: {
+          job: "progress",
+          data: activeJob,
+          sensors: { flowMeter: null },
+          iterations: jobIterations,
+          secondsPerIt: SECONDSINMINUTES
+        }
+      });
     }
 
     return applyJobToHWAsChunks(cycle, lengthInMin, fn);
