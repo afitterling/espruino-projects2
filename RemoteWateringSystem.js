@@ -139,7 +139,16 @@ function toggleSIM900(fn){
   and reestablishs it
  */
 function resetSIM(fn){
-  console.log("reset invoked");
+  /*
+   perform hard reset when memory bounds are met
+  */
+  if (process.memory().free < 1200) {
+    console.log("hard reset invoked");
+    digitalPulse(B5,0, 500);    
+    return;
+  }
+  
+  console.log("soft reset invoked");
   reconnectNum=reconnectNum+1;
   digitalWrite(A5,1);
   setTimeout(function(){
