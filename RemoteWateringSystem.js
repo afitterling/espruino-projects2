@@ -4,7 +4,7 @@ var atmod = require('http://localhost:3000/AT.js');
 var at = atmod.connect(Serial2);
 var gprsmod = require('http://localhost:3000/SIM900.js');
 var Clock = require('http://localhost:3000/clock.js').Clock;
-var WaterCycle = require('http://localhost:3000/watering.js').Cycle;
+var WaterCycle = require('http://localhost:3000/watercycle.js').Cycle;
 var FlowMeter = require('http://localhost:3000/flowmeter.js');
 var $http = require('http://localhost:3000/carriots.js').http;
 var clk = new Clock();
@@ -147,7 +147,7 @@ function resetSIM(fn){
     digitalPulse(B5,0, 500);    
     return;
   }
-  
+
   console.log("soft reset invoked");
   reconnectNum=reconnectNum+1;
   digitalWrite(A5,1);
@@ -207,13 +207,13 @@ function mainLoopFunc(){
           }).then(function(data){
             // success
               nReq=nReq+1;
-            
+
             // JOB HANDLING
             if (req1 && req1.result){
                 processJobs(req1.result);
             }
             jobRunner();
-            
+
           }, function(){
             //error
           nError=nError+1;
@@ -232,7 +232,7 @@ function mainLoopFunc(){
 
 function setupMainLoop(fn){
   if (mainLoopInterval) return;
-  console.log('init of main loop called');
+  console.log('main loop called');
   mainLoop = setInterval(mainLoopFunc, MAIN_INTERVAL_LENGTH * 60 * 1000);
   mainLoopInterval = true;
   return mainLoopFunc();
@@ -348,28 +348,79 @@ function jobRunner(){
 
 function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
 
-  // flow meter on
-  
   // clear main Loop
-//  clearMainLoop();
+  // clearMainLoop();
 
   console.log('water cycle', activeJob.cycle, 1);
+  console.log('flowmeter', 1);
 
-  // status
+  // activate water cycle
 
   WaterCycle(activeJob.cycle, 1);
+  Flowmeter.enable(true);
 
-  /*
-  setTimeout(function(){
-    flowMeterData.push(readFlowMeter());
-  }, 15*1000);
-*/
+  /* 
+    in case of to water drop
+    delete job and mark as failed
+  */
+
+  if (jobIterations >= 1 && Flowmeter.readAvg() < 0 ) {
+      Flowmeter.enable(false);
+      console.log('flowmeter', 0);
+      WaterCycle(activeJob.cycle, 0);
+      console.log('water cycle', activeJob.cycle, 0);
+
+      $http({
+        host: 'api.carriots.com',
+        path: '/streams/' + activeJob.id + '/',
+        port: '80',
+        method: 'DELETE',
+      }).then(function(){
+        workQ.splice(workQ.indexOf(activeJob),1);
+        // already removed?
+        $http({
+            host: 'api.carriots.com',
+            path: '/streams/',
+            port: '80',
+            protocol: "v1",
+            checksum: "",
+            device: "defaultDevice@afitterling.afitterling",
+            at: "now",
+            method:'POST',
+            data: {
+              job: "failed",
+              reason: "water flow drop",
+              data: activeJob,
+              iterations: jobIterations,
+              secondsPerIt: SECONDSINMINUTES
+            }
+        }).then(function(){
+        activeJob = null;
+
+        return setTimeout(function(){
+          if (fn){
+            return fn();
+          }
+        }, 30*1000);
+
+
+      });
+
+      // exit because of failure
+      return;
+    });
+  }
+
   return setTimeout(function(){
     /* if max length */
     jobIterations = jobIterations + 1;
 
     if (jobIterations >= lengthInMin) {
+      console.log('water cycle', activeJob.cycle, 0);
       WaterCycle(activeJob.cycle, 0);
+      Flowmeter.enable(false);
+      console.log('flowmeter', 0);
+
       activeJob.status = 'finished';
       console.log('job finished');
 
@@ -425,17 +476,12 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
         data: {
           job: "progress",
           data: activeJob,
-          sensors: { flowMeter: null },
+          sensors: { flowMeter: Flowmeter.readAvg() },
           iterations: jobIterations,
           secondsPerIt: SECONDSINMINUTES
         }
       });
     }
-
-    // @TODO early delete of job on server
-
-    // supervise flow sensor @TODO and emergency shutdown
-    // mark job as failed
 
     return applyJobToHWAsChunks(cycle, lengthInMin, fn);
   }, 1 * SECONDSINMINUTES * 1000);
@@ -463,11 +509,13 @@ var lock;
 E.on('init', function(){
 
   // FlowMeter initialization
-  FlowMeter.setup(A4);
+  FlowMeter.setup(A4, A8); // readPIN, enablePIN
+  FlowMeter.enable(true);
   FlowMeter.run();
 
   setTimeout(function(){
     var val = FlowMeter.calibrate();
+    FlowMeter.enable(false);
     if (val<0.5){
       digitalPulse(LED2,1, [600,260,600]);
     } else {
