@@ -142,10 +142,13 @@ function resetSIM(fn){
   /*
    perform hard reset when memory bounds are met
   */
-  if (process.memory().free < 1200) {
+  if (!activeJob && process.memory().free < 1500) {
     console.log("hard reset invoked");
-    digitalPulse(B5,0, 500);    
+    digitalPulse(B5,0, 500);
     return;
+    /*
+    will not reach as it cuts the power of espruino 
+    */
   }
 
   console.log("soft reset invoked");
@@ -357,15 +360,15 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
   // activate water cycle
 
   WaterCycle(activeJob.cycle, 1);
-  Flowmeter.enable(true);
+  FlowMeter.enable(true);
 
   /* 
     in case of to water drop
     delete job and mark as failed
   */
 
-  if (jobIterations >= 1 && Flowmeter.readAvg() < 0 ) {
-      Flowmeter.enable(false);
+  if (jobIterations >= 1 && FlowMeter.readAvg() < 0 ) {
+      FlowMeter.enable(false);
       console.log('flowmeter', 0);
       WaterCycle(activeJob.cycle, 0);
       console.log('water cycle', activeJob.cycle, 0);
@@ -418,7 +421,7 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
     if (jobIterations >= lengthInMin) {
       console.log('water cycle', activeJob.cycle, 0);
       WaterCycle(activeJob.cycle, 0);
-      Flowmeter.enable(false);
+      FlowMeter.enable(false);
       console.log('flowmeter', 0);
 
       activeJob.status = 'finished';
@@ -476,7 +479,7 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
         data: {
           job: "progress",
           data: activeJob,
-          sensors: { flowMeter: Flowmeter.readAvg() },
+          sensors: { flowMeter: FlowMeter.readAvg() },
           iterations: jobIterations,
           secondsPerIt: SECONDSINMINUTES
         }
