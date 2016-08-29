@@ -367,7 +367,7 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
     delete job and mark as failed
   */
 
-  if (jobIterations >= 1 && FlowMeter.readAvg() < 0 ) {
+  if (jobIterations >= 1 && FlowMeter.getAvg() < 0 ) {
       FlowMeter.enable(false);
       console.log('flowmeter', 0);
       WaterCycle(activeJob.cycle, 0);
@@ -479,7 +479,9 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
         data: {
           job: "progress",
           data: activeJob,
-          sensors: { flowMeter: FlowMeter.readAvg() },
+          sensors: { flowMeter: {
+            avg: FlowMeter.getAvg(),
+            max: FlowMeter.getMax()} },
           iterations: jobIterations,
           secondsPerIt: SECONDSINMINUTES
         }
