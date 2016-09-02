@@ -11,10 +11,11 @@ var clk = new Clock();
 var settings = require('http://localhost:3000/settings.js');
 
 $http.defaultHeaders['carriots.apiKey'] = settings.carriots.apiKey;
+//$http.debug(true);
 
 WaterCycle(1,0);
 WaterCycle(2,0);
-
+digitalWrite(A8, 1); // deactivate FlowSensor
 // PINs
 
 /*
@@ -56,7 +57,8 @@ var nReset = 0;
 var reconnectNum=0;
 var nError=0, nReq=0;
 var SECONDSINMINUTES = 60;
-
+var calibration;
+var WATER_FLOW_DROP_PROTECTION = false;
 
 function uplink(callback, callback2){
   reconnectRunning = true;
@@ -142,7 +144,7 @@ function resetSIM(fn){
   /*
    perform hard reset when memory bounds are met
   */
-  if (!activeJob && process.memory().free < 1500) {
+  if (!activeJob && process.memory().free < 2200) {
     console.log("hard reset invoked");
     digitalPulse(B5,0, 500);
     return;
@@ -204,7 +206,8 @@ function mainLoopFunc(){
                 total_docs: totalDocs,
                 result_length: results,
                 errorFlags: E.getErrorFlags(),
-                process: process.memory()
+                process: process.memory(),
+                calibration: calibration
               }
             }
           }).then(function(data){
@@ -265,14 +268,23 @@ function reconnectLoopFunc(){
         console.log('reconnectLoopFunc error handler');
         return setupMainLoop();
       });
-    }, 20000);
+    }, 30000);
   });
 }
 
 function setupReconnectLoop(){
   console.log('init of reconnect loop called');
-//  reconnectInterval = setInterval(reconnectLoopFunc, RESET_INTERVAL_LENGTH * 60 * 1000);
+  reconnectInterval = setInterval(reconnectLoopFunc, RESET_INTERVAL_LENGTH * 60 * 1000);
   return setTimeout(reconnectLoopFunc);
+}
+
+function clearReconnectLoop(){
+  clearInterval(reconnectInterval);
+}
+
+function reestablishReconnectInterval(){
+  console.log('initialization of reconnect loop interval only, without call');
+  reconnectInterval = setInterval(reconnectLoopFunc, RESET_INTERVAL_LENGTH * 60 * 1000);
 }
 
 /////////////////jobs
@@ -343,7 +355,9 @@ function jobRunner(){
     console.log('job started', activeJob);
 
     clearMainLoop();
+    clearReconnectLoop();
     return applyJobToHWAsChunks(activeJob.cycle, activeJob.time, function(){
+        reestablishReconnectInterval();
         setupMainLoop();
     });
   }
@@ -367,11 +381,11 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
     delete job and mark as failed
   */
 
-  if (jobIterations >= 1 && FlowMeter.getAvg() < 0 ) {
+  if (WATER_FLOW_DROP_PROTECTION && jobIterations >= 1 && FlowMeter.getAvg() < 0.2 ) {
       FlowMeter.enable(false);
       console.log('flowmeter', 0);
       WaterCycle(activeJob.cycle, 0);
-      console.log('water cycle', activeJob.cycle, 0);
+      console.log('water cycle', activeJob.cycle, 0, 'iteration=', jobIterations);
 
       $http({
         host: 'api.carriots.com',
@@ -407,7 +421,10 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
         }, 30*1000);
 
 
-      });
+        }, function(){
+        //error
+          console.log('error');
+        });
 
       // exit because of failure
       return;
@@ -461,31 +478,38 @@ function applyJobToHWAsChunks(cycle, lengthInMin ,fn){
           }
         }, 30*1000);
 
+      }, function(){
+        // error
+        console.log('error job done req');
       });
 
       return;
 
-    } else if ((jobIterations +1) % 2 === 0){
-      // start from first iteration every two minute
-      $http({
-        host: 'api.carriots.com',
-        path: '/status/',
-        port: '80',
-        protocol: "v1",
-        checksum: "",
-        device: "defaultDevice@afitterling.afitterling",
-        at: "now",
-        method:'POST',
-        data: {
-          job: "progress",
-          data: activeJob,
-          sensors: { flowMeter: {
-            avg: FlowMeter.getAvg(),
-            max: FlowMeter.getMax()} },
-          iterations: jobIterations,
-          secondsPerIt: SECONDSINMINUTES
-        }
-      });
+    } else {
+      if (activeJob){
+        console.log('status/progress request');
+        // start from first iteration every two minute
+        $http({
+          host: 'api.carriots.com',
+          path: '/status/',
+          port: '80',
+          protocol: "v1",
+          checksum: "",
+          device: "defaultDevice@afitterling.afitterling",
+          at: "now",
+          method:'POST',
+          data: {
+            job: "progress",
+            data: activeJob,
+            sensors: { flowMeter: {
+              avg: FlowMeter.getAvg(),
+              max: FlowMeter.getMax()}
+            },
+            iteration: jobIterations,
+            secondsPerIt: SECONDSINMINUTES
+          }
+        });
+      }
     }
 
     return applyJobToHWAsChunks(cycle, lengthInMin, fn);
@@ -520,6 +544,7 @@ E.on('init', function(){
 
   setTimeout(function(){
     var val = FlowMeter.calibrate();
+    calibration = val;
     FlowMeter.enable(false);
     if (val<0.5){
       digitalPulse(LED2,1, [600,260,600]);
