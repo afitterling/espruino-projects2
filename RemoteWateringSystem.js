@@ -55,7 +55,7 @@ var work;
 var gprs;
 var nReset = 0;
 var reconnectNum=0;
-var nError=0, nReq=0;
+var nError=0, nReq=1;
 var SECONDSINMINUTES = 60;
 var calibration;
 var WATER_FLOW_DROP_PROTECTION = false;
